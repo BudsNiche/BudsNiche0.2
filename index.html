@@ -20,7 +20,7 @@
     <nav>
       <a href="#check-in">Check-In</a>
       <a href="#poll">Hot Take</a>
-      <a href="#question">Question</a>
+      <a href="#question">Discussion</a>
       <a href="#game">Play</a>
     </nav>
   </header>
@@ -124,13 +124,39 @@
     <section id="question" class="section">
       <div class="section-heading">
         <div>
-          <p class="eyebrow">Question of the Day</p>
+          <p class="eyebrow">Today's Discussion</p>
           <h2>What do the Buds think?</h2>
         </div>
+        <span class="pill" id="discussionCount">0 posts</span>
       </div>
-      <article class="poll-card">
+
+      <article class="discussion-card">
         <p class="poll-question" id="questionText">Loading today’s question...</p>
-        <p class="muted">Community answers are coming next. For now, this proves the daily question is coming from Supabase.</p>
+
+        <form id="discussionForm" class="discussion-form">
+          <div class="discussion-fields">
+            <label>
+              Your name
+              <input id="discussionName" maxlength="30" autocomplete="nickname" placeholder="Your name" required />
+            </label>
+
+            <label class="discussion-response-field">
+              Your answer
+              <textarea id="discussionResponse" maxlength="500" placeholder="What do you think?" required></textarea>
+            </label>
+          </div>
+
+          <div class="discussion-submit-row">
+            <button class="button primary" id="discussionSubmit" type="submit">Post Answer</button>
+            <span class="muted small" id="discussionStatus">Your answer will be visible to everyone.</span>
+          </div>
+        </form>
+
+        <div class="discussion-divider"></div>
+
+        <div id="discussionFeed" class="discussion-feed" aria-live="polite">
+          <p class="muted">Loading today’s discussion...</p>
+        </div>
       </article>
     </section>
 

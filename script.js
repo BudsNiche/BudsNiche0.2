@@ -195,6 +195,292 @@ document.querySelectorAll(".vote-btn").forEach((btn) => {
   });
 });
 
+
+// Today's Discussion
+const discussionForm = document.getElementById("discussionForm");
+const discussionName = document.getElementById("discussionName");
+const discussionResponse = document.getElementById("discussionResponse");
+const discussionSubmit = document.getElementById("discussionSubmit");
+const discussionStatus = document.getElementById("discussionStatus");
+const discussionFeed = document.getElementById("discussionFeed");
+const discussionCount = document.getElementById("discussionCount");
+
+const savedDiscussionName = localStorage.getItem("budsniche-discussion-name");
+if (savedDiscussionName) discussionName.value = savedDiscussionName;
+
+function discussionTime(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
+function makeTextElement(tag, className, text) {
+  const element = document.createElement(tag);
+  if (className) element.className = className;
+  element.textContent = text;
+  return element;
+}
+
+async function fetchDiscussionPosts() {
+  const endpoint =
+    `${SUPABASE_URL}/rest/v1/question_responses?select=id,created_at,display_name,response,parent_response_id,likes&date=eq.${encodeURIComponent(todayKey)}&order=created_at.asc`;
+
+  const response = await fetch(endpoint, {
+    headers: { apikey: SUPABASE_PUBLISHABLE_KEY }
+  });
+
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(`Could not load discussion (${response.status}): ${message}`);
+  }
+
+  return await response.json();
+}
+
+async function insertDiscussionPost({ name, responseText, parentId = null }) {
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/question_responses`, {
+    method: "POST",
+    headers: {
+      apikey: SUPABASE_PUBLISHABLE_KEY,
+      "Content-Type": "application/json",
+      Prefer: "return=minimal"
+    },
+    body: JSON.stringify({
+      date: todayKey,
+      display_name: name,
+      response: responseText,
+      parent_response_id: parentId
+    })
+  });
+
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(`Could not post response (${response.status}): ${message}`);
+  }
+}
+
+function createReplyForm(parentId) {
+  const form = document.createElement("form");
+  form.className = "reply-form";
+
+  const grid = document.createElement("div");
+  grid.className = "reply-grid";
+
+  const nameLabel = document.createElement("label");
+  nameLabel.textContent = "Your name";
+  const nameInput = document.createElement("input");
+  nameInput.maxLength = 30;
+  nameInput.required = true;
+  nameInput.placeholder = "Your name";
+  nameInput.value = localStorage.getItem("budsniche-discussion-name") || "";
+  nameLabel.appendChild(nameInput);
+
+  const responseLabel = document.createElement("label");
+  responseLabel.textContent = "Your reply";
+  const replyInput = document.createElement("textarea");
+  replyInput.maxLength = 500;
+  replyInput.required = true;
+  replyInput.placeholder = "Write a reply...";
+  responseLabel.appendChild(replyInput);
+
+  grid.appendChild(nameLabel);
+  grid.appendChild(responseLabel);
+
+  const actions = document.createElement("div");
+  actions.className = "reply-form-actions";
+
+  const postButton = document.createElement("button");
+  postButton.type = "submit";
+  postButton.className = "button primary";
+  postButton.textContent = "Post Reply";
+
+  const cancelButton = document.createElement("button");
+  cancelButton.type = "button";
+  cancelButton.className = "text-button";
+  cancelButton.textContent = "Cancel";
+  cancelButton.addEventListener("click", () => form.remove());
+
+  const status = makeTextElement("span", "muted small", "");
+
+  actions.appendChild(postButton);
+  actions.appendChild(cancelButton);
+  actions.appendChild(status);
+
+  form.appendChild(grid);
+  form.appendChild(actions);
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+
+    const name = nameInput.value.trim();
+    const responseText = replyInput.value.trim();
+
+    if (!name || !responseText) return;
+
+    postButton.disabled = true;
+    status.textContent = "Posting...";
+
+    try {
+      localStorage.setItem("budsniche-discussion-name", name);
+      discussionName.value = name;
+
+      await insertDiscussionPost({
+        name,
+        responseText,
+        parentId
+      });
+
+      form.remove();
+      await loadDiscussion();
+    } catch (error) {
+      console.error(error);
+      status.textContent = "Could not post reply.";
+      postButton.disabled = false;
+    }
+  });
+
+  return form;
+}
+
+function createDiscussionPost(post, replies = []) {
+  const wrapper = document.createElement("div");
+
+  const card = document.createElement("article");
+  card.className = "discussion-post";
+
+  const head = document.createElement("div");
+  head.className = "discussion-post-head";
+  head.appendChild(makeTextElement("span", "discussion-name", post.display_name || "Anonymous"));
+  head.appendChild(makeTextElement("span", "discussion-time", discussionTime(post.created_at)));
+
+  card.appendChild(head);
+  card.appendChild(makeTextElement("p", "discussion-text", post.response || ""));
+
+  const actions = document.createElement("div");
+  actions.className = "discussion-actions";
+
+  const replyButton = document.createElement("button");
+  replyButton.type = "button";
+  replyButton.className = "text-button";
+  replyButton.textContent = replies.length ? `Reply • ${replies.length}` : "Reply";
+
+  replyButton.addEventListener("click", () => {
+    const existing = wrapper.querySelector(".reply-form");
+    if (existing) {
+      existing.remove();
+      return;
+    }
+    wrapper.appendChild(createReplyForm(post.id));
+  });
+
+  actions.appendChild(replyButton);
+  card.appendChild(actions);
+  wrapper.appendChild(card);
+
+  if (replies.length) {
+    const repliesContainer = document.createElement("div");
+    repliesContainer.className = "replies";
+
+    replies.forEach((reply) => {
+      const replyCard = document.createElement("article");
+      replyCard.className = "discussion-post reply-post";
+
+      const replyHead = document.createElement("div");
+      replyHead.className = "discussion-post-head";
+      replyHead.appendChild(makeTextElement("span", "discussion-name", reply.display_name || "Anonymous"));
+      replyHead.appendChild(makeTextElement("span", "discussion-time", discussionTime(reply.created_at)));
+
+      replyCard.appendChild(replyHead);
+      replyCard.appendChild(makeTextElement("p", "discussion-text", reply.response || ""));
+      repliesContainer.appendChild(replyCard);
+    });
+
+    wrapper.appendChild(repliesContainer);
+  }
+
+  return wrapper;
+}
+
+async function loadDiscussion() {
+  discussionFeed.innerHTML = "";
+
+  try {
+    const posts = await fetchDiscussionPosts();
+    discussionCount.textContent = `${posts.length} post${posts.length === 1 ? "" : "s"}`;
+
+    const repliesByParent = new Map();
+    const topLevel = [];
+
+    posts.forEach((post) => {
+      if (post.parent_response_id == null) {
+        topLevel.push(post);
+      } else {
+        const key = String(post.parent_response_id);
+        if (!repliesByParent.has(key)) repliesByParent.set(key, []);
+        repliesByParent.get(key).push(post);
+      }
+    });
+
+    if (!topLevel.length) {
+      const empty = document.createElement("div");
+      empty.className = "empty-discussion";
+      empty.textContent = "No answers yet. Be the first Bud to start the discussion.";
+      discussionFeed.appendChild(empty);
+      return;
+    }
+
+    topLevel
+      .slice()
+      .reverse()
+      .forEach((post) => {
+        const replies = repliesByParent.get(String(post.id)) || [];
+        discussionFeed.appendChild(createDiscussionPost(post, replies));
+      });
+  } catch (error) {
+    console.error(error);
+    discussionFeed.innerHTML = "";
+    discussionFeed.appendChild(
+      makeTextElement("p", "muted", "Could not load today’s discussion.")
+    );
+  }
+}
+
+discussionForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+
+  const name = discussionName.value.trim();
+  const responseText = discussionResponse.value.trim();
+
+  if (!name || !responseText) return;
+
+  discussionSubmit.disabled = true;
+  discussionStatus.textContent = "Posting...";
+
+  try {
+    localStorage.setItem("budsniche-discussion-name", name);
+
+    await insertDiscussionPost({
+      name,
+      responseText,
+      parentId: null
+    });
+
+    discussionResponse.value = "";
+    discussionStatus.textContent = "Posted!";
+    await loadDiscussion();
+
+    setTimeout(() => {
+      discussionStatus.textContent = "Your answer will be visible to everyone.";
+    }, 1800);
+  } catch (error) {
+    console.error(error);
+    discussionStatus.textContent = "Could not post. Try again.";
+  } finally {
+    discussionSubmit.disabled = false;
+  }
+});
+
+
 // Prototype game
 const rounds = [
   {
@@ -409,3 +695,4 @@ nextRound.addEventListener("click", () => {
 renderRound();
 loadDailyContent();
 loadPoll();
+loadDiscussion();
